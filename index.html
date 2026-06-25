@@ -141,6 +141,14 @@
     /* Tabla */
     .table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow);}
     .table-head{display:grid;grid-template-columns:2fr 1.2fr 0.7fr 0.7fr 1.1fr 1.4fr;gap:0;background:var(--surface2);border-bottom:1px solid var(--border);padding:10px 16px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;}
+    .th{display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none;border-radius:4px;padding:2px 4px;margin:-2px -4px;transition:background .1s,color .1s;white-space:nowrap;}
+    .th:hover{background:var(--border2);color:var(--text);}
+    .th.active{color:var(--accent);}
+    .th .sort-icon{font-size:12px;opacity:.25;transition:all .15s;}
+    .th:hover .sort-icon{opacity:.55;}
+    .th.active .sort-icon{opacity:1;}
+    .th.asc  .sort-icon{transform:rotate(0deg);}
+    .th.desc .sort-icon{transform:rotate(180deg);}
     .table-body{max-height:520px;overflow-y:auto;}
     .table-row{display:grid;grid-template-columns:2fr 1.2fr 0.7fr 0.7fr 1.1fr 1.4fr;gap:0;padding:10px 16px;border-bottom:1px solid var(--border);align-items:center;}
     .table-row:last-child{border-bottom:none;}
@@ -252,9 +260,13 @@
     </div>
     <div class="chips" id="chips"></div>
     <div class="table-wrap">
-      <div class="table-head">
-        <span>Cafetería</span><span>Región</span><span>Estado</span>
-        <span>Visitas</span><span>Última visita</span><span>Jueces visitadores</span>
+      <div class="table-head" id="table-head">
+        <span class="th active asc" onclick="sortBy('cafe')"    id="th-cafe">Cafetería <i class="ti ti-arrows-sort sort-icon"></i></span>
+        <span class="th"            onclick="sortBy('region')"  id="th-region">Región <i class="ti ti-arrows-sort sort-icon"></i></span>
+        <span class="th"            onclick="sortBy('estado')"  id="th-estado">Estado <i class="ti ti-arrows-sort sort-icon"></i></span>
+        <span class="th"            onclick="sortBy('visitas')" id="th-visitas">Visitas <i class="ti ti-arrows-sort sort-icon"></i></span>
+        <span class="th"            onclick="sortBy('fecha')"   id="th-fecha">Última visita <i class="ti ti-arrows-sort sort-icon"></i></span>
+        <span class="th"            onclick="sortBy('jueces')"  id="th-jueces">Jueces visit. <i class="ti ti-arrows-sort sort-icon"></i></span>
       </div>
       <div class="table-body" id="cafe-table-body"></div>
       <div class="table-footer" id="table-footer"></div>
@@ -312,6 +324,58 @@ let DB = null; // {global, regiones, cafes, judges}
 let pendingPostulantes = null; // ArrayBuffer
 let pendingSurvey = null;      // ArrayBuffer
 let activeCafe = null, activeJudge = null;
+let sortCol = 'cafe', sortDir = 'asc'; // estado de ordenamiento
+
+// ─── ORDENAMIENTO ───
+function sortBy(col) {
+  if (sortCol === col) {
+    sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortCol = col;
+    sortDir = (col === 'visitas' || col === 'estado' || col === 'jueces') ? 'desc' : 'asc';
+  }
+  ['cafe','region','estado','visitas','fecha','jueces'].forEach(c => {
+    const el = document.getElementById('th-' + c);
+    if (!el) return;
+    const isActive = c === sortCol;
+    el.classList.toggle('active', isActive);
+    el.classList.toggle('asc',   isActive && sortDir === 'asc');
+    el.classList.toggle('desc',  isActive && sortDir === 'desc');
+    // Cambiar ícono según estado
+    const icon = el.querySelector('.sort-icon');
+    if (icon) {
+      if (!isActive) {
+        icon.className = 'ti ti-arrows-sort sort-icon';
+      } else if (sortDir === 'asc') {
+        icon.className = 'ti ti-sort-ascending sort-icon';
+      } else {
+        icon.className = 'ti ti-sort-descending sort-icon';
+      }
+    }
+  });
+  applyFilters();
+}
+
+function sortCafes(arr) {
+  return [...arr].sort((a, b) => {
+    let va, vb;
+    switch(sortCol) {
+      case 'cafe':    va = a.cafe.toLowerCase();    vb = b.cafe.toLowerCase();   break;
+      case 'region':  va = a.region.toLowerCase();  vb = b.region.toLowerCase(); break;
+      case 'estado':  va = a.visitada ? 1 : 0;      vb = b.visitada ? 1 : 0;    break;
+      case 'visitas': va = a.n_visitas;              vb = b.n_visitas;            break;
+      case 'fecha':
+        va = a.ultima_visita ? a.ultima_visita.split('/').reverse().join('') : '';
+        vb = b.ultima_visita ? b.ultima_visita.split('/').reverse().join('') : '';
+        break;
+      case 'jueces':  va = a.jueces.length;          vb = b.jueces.length;        break;
+      default:        va = a.cafe.toLowerCase();    vb = b.cafe.toLowerCase();
+    }
+    if (va < vb) return sortDir === 'asc' ? -1 : 1;
+    if (va > vb) return sortDir === 'asc' ?  1 : -1;
+    return a.cafe.localeCompare(b.cafe);
+  });
+}
 
 const AVATAR_COLORS = [
   {bg:'#dbeafe',fg:'#1e40af'},{bg:'#d1fae5',fg:'#065f46'},{bg:'#fef3c7',fg:'#92400e'},
@@ -645,7 +709,7 @@ function applyFilters() {
     if (sta === 'pendiente' &&  c.visitada) return false;
     return true;
   });
-  filtered.sort((a,b) => b.visitada-a.visitada || b.n_visitas-a.n_visitas || a.cafe.localeCompare(b.cafe));
+  filtered = sortCafes(filtered);
   renderTable(filtered);
 }
 
