@@ -395,21 +395,21 @@ function sortCafes(arr) {
   return [...arr].sort((a, b) => {
     let va, vb;
     switch(sortCol) {
-      case 'cafe':    va = a.cafe.toLowerCase();    vb = b.cafe.toLowerCase();   break;
-      case 'region':  va = a.region.toLowerCase();  vb = b.region.toLowerCase(); break;
-      case 'estado':  va = a.visitada ? 1 : 0;      vb = b.visitada ? 1 : 0;    break;
-      case 'visitas': va = a.n_visitas;              vb = b.n_visitas;            break;
-      case 'comuna':  va = (a.comuna||'').toLowerCase(); vb = (b.comuna||'').toLowerCase(); break;
+      case 'cafe':    va = (a.n||'').toLowerCase();    vb = (b.n||'').toLowerCase();   break;
+      case 'region':  va = (a.r||'').toLowerCase();    vb = (b.r||'').toLowerCase();   break;
+      case 'estado':  va = a.v ? 1 : 0;               vb = b.v ? 1 : 0;               break;
+      case 'visitas': va = a.nv;                       vb = b.nv;                      break;
+      case 'comuna':  va = (a.c||'').toLowerCase();    vb = (b.c||'').toLowerCase();   break;
       case 'fecha':
-        va = a.ultima_visita ? a.ultima_visita.split('/').reverse().join('') : '';
-        vb = b.ultima_visita ? b.ultima_visita.split('/').reverse().join('') : '';
+        va = a.u ? a.u.split('/').reverse().join('') : '';
+        vb = b.u ? b.u.split('/').reverse().join('') : '';
         break;
-      case 'jueces':  va = a.jueces.length;          vb = b.jueces.length;        break;
-      default:        va = a.cafe.toLowerCase();    vb = b.cafe.toLowerCase();
+      case 'jueces':  va = (a.js||[]).length;          vb = (b.js||[]).length;         break;
+      default:        va = (a.n||'').toLowerCase();    vb = (b.n||'').toLowerCase();
     }
     if (va < vb) return sortDir === 'asc' ? -1 : 1;
     if (va > vb) return sortDir === 'asc' ?  1 : -1;
-    return a.cafe.localeCompare(b.cafe);
+    return (a.n||'').localeCompare(b.n||'');
   });
 }
 
@@ -482,25 +482,25 @@ function parseSurvey(buf) {
 function crossData(postulantes, visitas) {
   const visitasByCafe = {};
   visitas.forEach(v => {
-    const k = v.cafe.toLowerCase();
+    const k = (v.cafe||'').toLowerCase();
     if (!visitasByCafe[k]) visitasByCafe[k] = [];
-    visitasByCafe[k].push({juez: v.j, fecha: v.f});
+    visitasByCafe[k].push({j: v.juez, f: v.fecha});
   });
 
-  const judgesSet = new Set(visitas.map(v => v.j));
+  const judgesSet = new Set(visitas.map(v => v.juez));
   const judges = [...judgesSet].sort();
 
   const cafes = postulantes.map(p => {
-    const k = p.cafe.toLowerCase();
+    const k = (p.cafe||'').toLowerCase();
     const detail = visitasByCafe[k] || [];
-    const jueces = [...new Set(detail.map(v => v.j))];
+    const js = [...new Set(detail.map(v => v.j))];
     const fechas = detail.map(v => v.f).filter(Boolean);
     return {
-      n: p.cafe, r: p.region, c: p.comuna||''||'', direccion: p.direccion,
-      v: detail.length > 0,
+      n: p.cafe, r: p.region, c: p.comuna||'',
+      v: detail.length > 0 ? 1 : 0,
       nv: detail.length,
       vs: detail,
-      jueces,
+      js,
       u: fechas.length ? fechas[fechas.length-1] : ''
     };
   });
@@ -514,13 +514,13 @@ function crossData(postulantes, visitas) {
     regMap[c.r].total++;
     if (c.v) regMap[c.r].visitadas++;
   });
-  const regiones = Object.entries(regMap)
-    .map(([region,v]) => ({region, total:v.total, visitadas:v.visitadas, pct:+(v.visitadas/v.total*100).toFixed(1)}))
-    .sort((a,b) => b.total - a.total);
+  const reg = Object.entries(regMap)
+    .map(([region,rv]) => ({r:region, t:rv.total, v:rv.visitadas, p:+(rv.visitadas/rv.total*100).toFixed(1)}))
+    .sort((a,b) => b.t - a.t);
 
   return {
-    global: {total, visitadas, no_visitadas: total-visitadas, pct: +(visitadas/total*100).toFixed(1)},
-    regiones, cafes, judges
+    g: {total, visitadas, no_visitadas: total-visitadas, pct: +(visitadas/total*100).toFixed(1)},
+    reg, cafes, judges
   };
 }
 
@@ -640,7 +640,7 @@ function setTab(tab) {
 
 // ─── RESUMEN ───
 function renderResumen() {
-  const sorted = [...DB.reg].sort((a,b)=>b.pct-a.pct);
+  const sorted = [...DB.reg].sort((a,b)=>b.p-a.p);
   const withV = sorted.filter(r=>r.v>0);
   const zero  = sorted.filter(r=>r.v===0);
   const maxP  = Math.max(...withV.map(r=>r.p), 1);
@@ -666,7 +666,7 @@ function renderResumen() {
 
 // ─── REGIONES ───
 function renderRegiones() {
-  const sorted = [...DB.reg].sort((a,b)=>b.total-a.total);
+  const sorted = [...DB.reg].sort((a,b)=>b.t-a.t);
   document.getElementById('region-grid').innerHTML = sorted.map(r=>{
     const color=pctColor(r.p);
     const bc=r.p>=50?'badge-green':r.p>0?'badge-yellow':'badge-red';
