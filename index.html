@@ -165,7 +165,9 @@
     .table-body::-webkit-scrollbar{width:5px;}
     .table-body::-webkit-scrollbar-track{background:transparent;}
     .table-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
-    .footer{margin-top:3rem;text-align:center;font-size:12px;color:var(--text3);}
+    .export-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:var(--radius-md);font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--green);color:var(--green);background:none;transition:all .15s;}
+    .export-btn:hover{background:var(--green-bg);}
+    .export-btn .ti{font-size:14px;}
     .rank-table{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow);}
     .rank-head{display:grid;grid-template-columns:60px 1fr 160px 160px 180px;gap:0;background:var(--surface2);border-bottom:1px solid var(--border);padding:12px 20px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;}
     .rank-row{display:grid;grid-template-columns:60px 1fr 160px 160px 180px;gap:0;padding:12px 20px;border-bottom:1px solid var(--border);align-items:center;transition:background .1s;}
@@ -800,7 +802,7 @@ function renderTable(cafes) {
   }).join('');
   const v = cafes.filter(c=>c.v).length;
   const tv = cafes.reduce((s,c)=>s+c.nv,0);
-  footer.innerHTML = `<span>Mostrando <strong>${cafes.length}</strong> cafeterías · <strong>${v}</strong> visitadas · <strong>${cafes.length-v}</strong> pendientes</span><span><strong>${tv}</strong> visitas totales en selección</span>`;
+  footer.innerHTML = `<span>Mostrando <strong>${cafes.length}</strong> cafeterías · <strong>${v}</strong> visitadas · <strong>${cafes.length-v}</strong> pendientes</span><div style="display:flex;align-items:center;gap:12px;"><span><strong>${tv}</strong> visitas totales en selección</span><button class="export-btn" onclick="exportCafesExcel()"><i class="ti ti-file-spreadsheet"></i> Exportar Excel</button></div>`;
 }
 
 // ─── EXPORTAR HTML CON DATOS EMBEBIDOS ───
@@ -891,7 +893,9 @@ function renderJueces() {
         <div style="font-size:17px;font-weight:600;">Ranking de Jueces</div>
         <div style="font-size:13px;color:var(--text2);margin-top:2px;">${JUDGES_RANKING.length} jueces activos · ordenados por número de visitas</div>
       </div>
-      <div style="display:flex;gap:10px;">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <button class="export-btn" onclick="exportJuecesExcel()"><i class="ti ti-file-spreadsheet"></i> Exportar Excel</button>
+        <div style="display:flex;gap:10px;">
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:.75rem 1.25rem;text-align:center;box-shadow:var(--shadow);">
           <div style="font-size:22px;font-weight:700;color:var(--accent);">${JUDGES_RANKING.reduce((s,j)=>s+j.visitas,0)}</div>
           <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;">Total visitas</div>
@@ -904,7 +908,7 @@ function renderJueces() {
           <div style="font-size:22px;font-weight:700;color:var(--text);">${(JUDGES_RANKING.reduce((s,j)=>s+j.visitas,0)/JUDGES_RANKING.length).toFixed(1)}</div>
           <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;">Promedio</div>
         </div>
-      </div>
+      </div></div>
     </div>
     <div class="rank-table">
       <div class="rank-head">
@@ -961,6 +965,67 @@ function renderJueces() {
 
   html += '</div>';
   panel.innerHTML = html;
+}
+
+// ─── EXPORTAR EXCEL ───
+function exportCafesExcel() {
+  const reg    = document.getElementById('region-filter').value;
+  const com    = document.getElementById('comuna-filter') ? document.getElementById('comuna-filter').value : '';
+  const sta    = document.getElementById('status-filter').value;
+
+  let filtered = DB.cafes.filter(c => {
+    if (activeCafe  && c.n !== activeCafe) return false;
+    if (activeJudge && !(c.js||[]).includes(activeJudge)) return false;
+    if (reg && c.r !== reg) return false;
+    if (com && c.c !== com) return false;
+    if (sta === 'visitada'  && !c.v) return false;
+    if (sta === 'pendiente' &&  c.v) return false;
+    return true;
+  });
+  filtered = sortCafes(filtered);
+
+  const rows = filtered.map((c, i) => ({
+    'N°': i + 1,
+    'Cafetería': c.n,
+    'Región': c.r,
+    'Comuna': c.c,
+    'Estado': c.v ? 'Visitada' : 'Pendiente',
+    'N° Visitas': c.nv,
+    'Última Visita': c.u || '',
+    'Jueces': (c.js||[]).join(', '),
+    'Detalle Visitas': (c.vs||[]).map(v => `${v.j} (${v.f})`).join(' | ')
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  // Ancho de columnas
+  ws['!cols'] = [
+    {wch:5},{wch:35},{wch:28},{wch:20},{wch:12},
+    {wch:10},{wch:14},{wch:35},{wch:60}
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Cafeterías');
+
+  const fecha = new Date().toLocaleDateString('es-CL').replace(/\//g,'-');
+  const filtroLabel = activeJudge ? `_${activeJudge.split(' ')[0]}` : (activeCafe ? '_1cafe' : '');
+  XLSX.writeFile(wb, `cafeterias_${fecha}${filtroLabel}.xlsx`);
+}
+
+function exportJuecesExcel() {
+  const rows = JUDGES_RANKING.map((j, i) => ({
+    'Posición': j.visitas > 0 ? i + 1 : '—',
+    'Juez': j.juez,
+    'Visitas Totales': j.visitas || 0,
+    'Cafeterías Únicas': j.cafeterias || 0,
+    'Estado': j.visitas > 0 ? 'Con visitas' : 'Sin visitas'
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{wch:10},{wch:28},{wch:16},{wch:18},{wch:14}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Ranking Jueces');
+
+  const fecha = new Date().toLocaleDateString('es-CL').replace(/\//g,'-');
+  XLSX.writeFile(wb, `ranking_jueces_${fecha}.xlsx`);
 }
 
 // ─── INIT ───
